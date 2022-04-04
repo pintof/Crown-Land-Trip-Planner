@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="eng">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crown Land Trip Planner</title>
+    <style>
+      th {
+        border: 1px solid green;
+        border-radius: 25px;
+        background-color: green;
+        color: white;
+      }
+      td {
+        border: 1px solid green;
+        border-radius: 25px;
+        color: green;
+      }
+      h1 {
+        color: white;
+        background-color: green;
+      }
+    </style>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+      integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+      crossorigin=""
+    />
+    <script
+      src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+      integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+      crossorigin=""
+    ></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script>
+      async function LIOQuery(lat, long) {
+        const url = new URL(
+          "https://ws.lioservices.lrc.gov.on.ca/arcgis1071a/rest/services/LIO_OPEN_DATA/LIO_Open06/MapServer/5/query"
+        );
+        url.searchParams.set(
+          "outFields",
+          "OBJECTID,POLICY_IDENT,DESIGNATION_ENG,NAME_ENG,CATEGORY_ENG,OVERLAY_IND,EFFECTIVE_DATETIME"
+        );
+        url.searchParams.set("geometry", `${long},${lat}`);
+        url.searchParams.set("geometryType", "esriGeometryPoint");
+        url.searchParams.set("returnGeometry", "false");
+        url.searchParams.set("f", "json");
+
+        const response = await fetch(url.toString());
+        const data = await response.json();
+        if (data.features.length == 0) {
+          return "Not Crown Land";
+        }
+        const policy_no = data.features[0].attributes.POLICY_IDENT;
+
+        return policy_no;
+      }
+      async function XMLQuery(policy_no, lat, long) {
+        const url = `https://api.codetabs.com/v1/proxy?quest=https://www.lioapplications.lrc.gov.on.ca/services/CLUPA/dbclupaIdentify.ashx?lang=ENG&id=${policy_no}`;
+        const response = await fetch(url);
+        const data = $.parseXML(await response.text());
+        try {
+          landID =
+            data.getElementsByTagName("POLICY_IDENT")[0].childNodes[0]
+              .nodeValue;
+        } catch {
+          landID = "";
+        }
+        try {
+          name =
+            data.getElementsByTagName("OFFICIAL_NAME")[0].childNodes[0]
+              .nodeValue;
+        } catch {
+          name = "";
+        }
+        try {
+          designation =
+            data.getElementsByTagName("DESIGNATION")[0].childNodes[0].nodeValue;
+        } catch {
+          designation = "";
+        }
+        try {
+          category =
+            data.getElementsByTagName("CPA_CATEGORY")[0].childNodes[0]
+              .nodeValue;
+        } catch {
+          category = "";
+        }
+        try {
+          NDMNRFDistrict =
+            data.getElementsByTagName("DISTRICT_NAME")[0].childNodes[0]
+              .nodeValue;
+        } catch {
+          NDMNRFDistrict = "";
+        }
+        try {
+          MECPDistrict = data.getElementsByTagName("PARK_ADMIN_ZONE_NAME")[0]
+            .childNodes[0].nodeValue;
+        } catch {
+          MECPDistrict = "";
+        }
+        $("#table").append(
+          `<tr><td>${landID}</td><td>${name}</td><td>${designation}</td><td>${category}</td><td>${NDMNRFDistrict}</td><td>${MECPDistrict}</td><td>${lat}</td><td>${long}</td></tr>`
+        );
+      }
+    </script>
+  </head>
+  <body
+    style="
+      text-align: center;
+      font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS',
+        sans-serif;
+    "
+  >
+    <h1><b>Crown Land Identifier</b></h1>
+    <input type="text" id="lat" placeholder="Enter Latitude (DD)" />
+    <input type="text" id="long" placeholder="Enter Longitude (DD)" />
+    <input
+      type="button"
+      onclick="onMapClick({ latlng: new L.LatLng($('#lat').val(), $('#long').val()) })"
+      value="Submit"
+    />
+    <a href="/logout">Logout</a>
+    <div id="map" style="height: 50vh; width: 99vw"></div>
+    <table id="table" style="width: 100%; text-align: center">
+      <tr>
+        <th>Land ID</th>
+        <th>Name</th>
+        <th>Designation</th>
+        <th>Category</th>
+        <th>NDMNRF District</th>
+        <th>MECP District</th>
+        <th>Lat</th>
+        <th>Long</th>
+      </tr>
+    </table>
+  </body>
+  <script>
+    var map = L.map("map").setView([45.615, -80.521], 7);
+    var popup = L.popup();
+
+    var tiles = L.tileLayer(
+      "https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw",
+      {
+        maxZoom: 18,
+        attribution:
+          'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ' +
+          'Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+        id: "mapbox/streets-v11",
+        tileSize: 512,
+        zoomOffset: -1,
+      }
+    ).addTo(map);
+
+    async function onMapClick(e) {
+      const policy_no = await LIOQuery(e.latlng.lat, e.latlng.lng);
+      let title, color, popupContent, marker;
+      policy_no == "Not Crown Land"
+        ? ((title = "&cross; Not Crown Land"),
+          (color = "red"),
+          (popupContent = `<b style='color:${color}'>${title}</b>`),
+          popup.setLatLng(e.latlng).setContent(popupContent).openOn(map))
+        : (XMLQuery(policy_no, e.latlng.lat, e.latlng.lng),
+          (marker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map)),
+          (title = "&check; Crown Land"),
+          (color = "green"),
+          (popupContent =
+            `<b style='color:${color}'>${title}</b>` +
+            `<br><a href='https://www.lioapplications.lrc.gov.on.ca/services/CLUPA/xmlReader.aspx?xsl=web-primary.xsl&type=primary&POLICY_IDENT=${policy_no}' target="_blank" rel="noopener noreferrer">&hookrightarrow;${policy_no}</button>`),
+          marker.bindPopup(popupContent).openPopup());
+    }
+
+    map.on("click", onMapClick);
+  </script>
+</html>
